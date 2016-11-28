@@ -4,7 +4,7 @@
 Plugin Name: Stone Event Manager
 Plugin URI: http://johnathonstone.com
 Description: Promote your events in WordPress with a user-friendly event creation form that creates a new post with a Google Map.
-Version: 0.3.2
+Version: 0.3.5
 */
 
 /* Change log:
@@ -20,18 +20,27 @@ Vs 0.3.0	11/28/2016	Improved form input names, added required fields.
 												Added support for post meta interaction.
 Vs 0.3.1	11/28/2016	Improved event post content generation.
 Vs 0.3.2	11/28/2016	Added Google Maps to post content generation.
+Vs 0.3.3	11/28/2016	Improved date and time display in post content.
+												Added automatic 'Events' category assignment.
+Vs 0.3.4	11/28/2016	Moved Google Maps code into dedicated functions.
+Vs 0.3.5	11/28/2016	Fixed bug experienced with ampersands in map locations.
 */
 
 function sem_version() {
 	// Return current plugin version number.
-	return '0.3.2';
+	return '0.3.5';
 }
 
 function sem_create_event_wp_postarr($event_data) {
 	// Creates a WordPress Post Array using standard event data.
 
+	// Prepare the category information.
+	$category_id = trc_get_category_id_by_slug('events');
+	$post_category = array($category_id);
+
 	// Populate the WordPress post array with the event information.
 	$postarr = array(
+		'post_category' => $post_category,
 		'post_content' => sem_event_post_content($event_data),
 		'post_name' => $event_data['event_title'],
 		'post_status' => 'publish',
@@ -45,6 +54,8 @@ function sem_create_event_wp_postarr($event_data) {
 
 function sem_display_event_form() {
 	// Display the Event Creation Form.
+	date_default_timezone_set('America/Chicago');
+
 	echo '
 		<form action="/event-creation-confirmation/" method="POST">
 				<div class="full-width">
@@ -107,26 +118,25 @@ function sem_event_post_content($event_data) {
 	$event_map_location = $event_data['event_map_location'];
 	$event_descriptive_location = $event_data['event_descriptive_location'];
 
+	// Convert the times and dates into user-friendly formats.
+	date_default_timezone_set('America/Chicago');
+	$start_time = date('g:ia', strtotime($event_start_time));
+	$end_time = date('g:ia', strtotime($event_end_time));
+	$date = date('l, F j, Y', strtotime($event_date));
+	$date_and_time = "$date from $start_time - $end_time";
+
 	// Build the Google Map.
-	$token = 'AIzaSyB4LwVRoP-RljrtBwqWADS1Vu86PVL10Zo';
-	$base_url = 'https://www.google.com/maps/embed/v1/place?key=';
-	$map_url = $base_url . $token . '&q=';
-	$map_url .= sem_parse_google_map_address_for_api($event_map_location);
+	$google_map_code = sem_get_google_map_code($event_map_location);
 
 	// Build the post content.
 	$post_content = "
 		<p>$event_description</p>
 		<p><strong>Time and Place:</strong></p>
 		<p style='margin-bottom: 64px;'>
-			$event_date from $event_start_time - $event_end_time
+			$date_and_time
 			Location: $event_descriptive_location
 		</p>
-		<iframe
-		  width='80%'
-		  height='420'
-		  frameborder='0' style='border:0'
-		  src='$map_url' allowfullscreen>
-		</iframe>
+		$google_map_code
 	";
 
 	// Return the post content.
@@ -242,6 +252,44 @@ function sem_field_names($pretty = false) {
 	return $field_names;
 }
 
+function sem_get_google_map_code($map_location_string) {
+	// Gets the HTML code for an embedded Google Map.
+	//	Requires a map location string.
+
+	// Build the map URL.
+	$google_map_url = sem_get_google_map_url($map_location_string);
+
+	// Build the map code.
+	$google_map_code = "
+		<iframe
+			width='80%'
+			height='420'
+			frameborder='0' style='border:0'
+			src='$google_map_url' allowfullscreen>
+		</iframe>
+	";
+
+	// Return the HTML code as a string.
+	return $google_map_code;
+}
+
+function sem_get_google_map_url($map_location_string) {
+	// Parses a user-provided map location string and returns a URL that can
+	//	be used to generate a Google Map.
+
+	// Get the Google Maps API key.
+	require_once('includes/google-maps-api.php');
+
+	// Build the map URL.
+	$google_maps_api_key = sem_get_google_maps_api_key();
+	$base_url = 'https://www.google.com/maps/embed/v1/place?key=';
+	$map_url = $base_url . $google_maps_api_key . '&q=';
+	$map_url .= sem_parse_google_map_address_for_api($map_location_string);
+
+	// Return the API-friendly map URL string.
+	return $map_url;
+}
+
 function sem_missing_field_count() {
 	// Detects whether there are required fields missing and returns how many.
 
@@ -284,14 +332,20 @@ function sem_parse_google_map_address_for_api($address) {
 	// Converts a map address to a string form with +'s instead of spaces,
 	//	and no spaces before or after commas.
 
+	// List of original and replacement strings.
+	$replacements = array(
+		'&' 	=> '%26',	// Replace ampersands with their URI encoded version.
+		', ' 	=> ',',		// Remove spaces that come after commas.
+		' ' 	=> '+'		// Replace remaining spaces with plus signs.
+	);
+
 	// Remove spaces at the beginning and end of the entire string.
 	$api_friendly_address = trim($address);
 
-	// Remove spaces that come after commas.
-	$api_friendly_address = str_replace(', ', ',', $api_friendly_address);
-
-	// Replace remaining spaces with plus signs.
-	$api_friendly_address = str_replace(' ', '+', $api_friendly_address);
+	// Perform text replacements.
+	foreach ($replacements as $original => $new) {
+		$api_friendly_address = str_replace($original, $new, $api_friendly_address);
+	}
 
 	// Return the modified string.
 	return $api_friendly_address;

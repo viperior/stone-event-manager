@@ -2,7 +2,7 @@
 ##### Promote your events in many places with one easy interface. Post to WordPress, Facebook, Google Calendar, and Twitter!
 
 ## Development Roadmap
-Current version: 0.3.2
+Current version: 0.3.4
 
 Features currently implemented:
 * Create a basic WordPress post with your event data.
