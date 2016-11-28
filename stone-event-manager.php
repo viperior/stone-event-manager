@@ -3,8 +3,8 @@
 /*
 Plugin Name: Stone Event Manager
 Plugin URI: http://johnathonstone.com
-Description: Promote your events in one place. Post to WordPress, Facebook, Google Calendar, and Twitter!
-Version: 0.2.1
+Description: Promote your events in WordPress with a user-friendly event creation form that creates a new post with a Google Map.
+Version: 0.3.2
 */
 
 /* Change log:
@@ -16,24 +16,15 @@ Vs 0.1.0	11/11/2016	Prototype build complete!
 Vs 0.1.1	11/11/2016	Implemented better naming conventions, added checking.
 Vs 0.2.0	11/11/2016	Split event receiver into modular functions.
 Vs 0.2.1	11/11/2016	Improved success message display.
+Vs 0.3.0	11/28/2016	Improved form input names, added required fields.
+												Added support for post meta interaction.
+Vs 0.3.1	11/28/2016	Improved event post content generation.
+Vs 0.3.2	11/28/2016	Added Google Maps to post content generation.
 */
 
 function sem_version() {
 	// Return current plugin version number.
-	return '0.2.1';
-}
-
-function sem_create_event_wp_post($event_data) {
-	// Creates a WordPress post using sanitized event data.
-
-	// Populate the WordPress post array with the event information.
-	$postarr = sem_create_event_wp_postarr($event_data);
-
-	// Create the WordPress post.
-	$post_creation_status = sem_create_wp_post($postarr);
-
-	// Return the post creation status and/or error message array.
-	return $post_creation_status;
+	return '0.3.2';
 }
 
 function sem_create_event_wp_postarr($event_data) {
@@ -41,65 +32,43 @@ function sem_create_event_wp_postarr($event_data) {
 
 	// Populate the WordPress post array with the event information.
 	$postarr = array(
-		'post_content' => sem_event_data_display_text($event_data),
-		'post_name' => $event_data['title'],
+		'post_content' => sem_event_post_content($event_data),
+		'post_name' => $event_data['event_title'],
 		'post_status' => 'publish',
-		'post_title' => $event_data['title']
+		'post_title' => $event_data['event_title'],
+		'meta_input' => $event_data
 	);
 
 	// Return the post array.
 	return $postarr;
 }
 
-function sem_create_wp_post($postarr) {
-	// Creates a WordPress post using a sanitized post array.
-
-	// Create the WordPress Post and determine success.
-	$post_created_error = wp_insert_post($postarr, true);
-
-	// Check for WP error during post creation attempt.
-	$post_created = true;
-	if( is_wp_error($post_created_error) ) {
-		$post_created = false;
-	}
-
-	// Prepare the return array with two values - a boolean to indicate success
-	// and the WP error in the event of one. If no error, the second value
-	// is not added.
-	$post_creation_status = array($post_created);
-
-	// Add the WP error in the event of one.
-	if( $post_created == false ) {
-		array_push($post_creation_status, $post_created_error);
-	}
-
-	// Return the post creation status array.
-	return $post_creation_status;
-}
-
 function sem_display_event_form() {
 	// Display the Event Creation Form.
 	echo '
 		<form action="/event-creation-confirmation/" method="POST">
-			<div class="full-width">
-				Event Title: <input name="title" type="text" />
-			</div>
-			<div class="full-width">
-				Date: <input name="date" type="date" />
-			</div>
-			<div class="half-width">
-				Start Time:	<input name="start_time" type="time" />
-			</div>
-			<div class="half-width">
-				End Time:	<input name="end_time" type="time" />
-			</div>
-			<div class="full-width">
-				Location:	<input name="location" type="text" />
-			</div>
-			<div class="full-width">
-				Description: <textarea name="description"></textarea>
-			</div>
-			<input name="cne-submitted" type="submit" value="Create Event" />
+				<div class="full-width">
+						Event Title: <input name="event_title" type="text" required>
+				</div>
+				<div class="full-width">
+						Date: <input name="event_date" type="date" required>
+				</div>
+				<div class="half-width">
+						Start Time: <input name="event_start_time" type="time">
+				</div>
+				<div class="half-width">
+						End Time: <input name="event_end_time" type="time">
+				</div>
+				<div class="full-width">
+						Map Location: <input name="event_map_location" type="text">
+				</div>
+				<div class="full-width">
+						Descriptive Location: <input name="event_descriptive_location" type="text">
+				</div>
+				<div class="full-width">
+						Description: <textarea name="event_description" required></textarea>
+				</div>
+				<input name="cne-submitted" type="submit" value="Create Event">
 		</form>
 	';
 
@@ -125,6 +94,43 @@ function sem_event_data_display_text($event_data) {
 
 	// Return the event data display code.
 	return $event_data_display_text;
+}
+
+function sem_event_post_content($event_data) {
+	// Builds the post content for the WordPress event post.
+
+	// Put the event data in convenient variables.
+	$event_date = $event_data['event_date'];
+	$event_description = $event_data['event_description'];
+	$event_start_time = $event_data['event_start_time'];
+	$event_end_time = $event_data['event_end_time'];
+	$event_map_location = $event_data['event_map_location'];
+	$event_descriptive_location = $event_data['event_descriptive_location'];
+
+	// Build the Google Map.
+	$token = 'AIzaSyB4LwVRoP-RljrtBwqWADS1Vu86PVL10Zo';
+	$base_url = 'https://www.google.com/maps/embed/v1/place?key=';
+	$map_url = $base_url . $token . '&q=';
+	$map_url .= sem_parse_google_map_address_for_api($event_map_location);
+
+	// Build the post content.
+	$post_content = "
+		<p>$event_description</p>
+		<p><strong>Time and Place:</strong></p>
+		<p style='margin-bottom: 64px;'>
+			$event_date from $event_start_time - $event_end_time
+			Location: $event_descriptive_location
+		</p>
+		<iframe
+		  width='80%'
+		  height='420'
+		  frameborder='0' style='border:0'
+		  src='$map_url' allowfullscreen>
+		</iframe>
+	";
+
+	// Return the post content.
+	return $post_content;
 }
 
 function sem_execute_sql($sql) {
@@ -169,18 +175,20 @@ function sem_event_receiver() {
 		$event_data = sem_parse_event_form_data();
 
 		// Create the WordPress post.
-		$post_creation_status = sem_create_event_wp_post($event_data);
+		//$post_creation_status = sem_create_event_wp_post($event_data);
+		$postarr = sem_create_event_wp_postarr($event_data);
+		$post = wp_insert_post($postarr, true);
 
 		// Inform the user whether the post creation was successful or not.
 		echo '<div style="display: block;">';
-		if( $post_creation_status[0] ) {
+	if( !is_wp_error($post) ) {
 			// Post was successfully created.
 			echo 'WordPress post was successfully created!';
 		}
 		else {
 			// Error occured while creating the post.
 			echo 'An error occurred while creating the WordPress post: ';
-			echo $post_creation_status[1]->get_error_message();
+			echo $post->get_error_message();
 		}
 		echo '</div>';
 
@@ -209,22 +217,24 @@ function sem_field_names($pretty = false) {
 	// Create the array of field names with a numeric index.
 	if( $pretty ) {
 		$field_names = array(
-			'Event',
+			'Event Title',
 			'Date',
 			'Start Time',
 			'End Time',
-			'Location',
+			'Map Location',
+			'Descriptive Location',
 			'Details'
 		);
 	}
 	else {
 		$field_names = array(
-			'title',
-			'date',
-			'start_time',
-			'end_time',
-			'location',
-			'description'
+			'event_title',
+			'event_date',
+			'event_start_time',
+			'event_end_time',
+			'event_map_location',
+			'event_descriptive_location',
+			'event_description'
 		);
 	}
 
@@ -258,26 +268,33 @@ function sem_missing_field_count() {
 function sem_parse_event_form_data() {
 	// Reads and sanitizes the event form data and returns it as an array.
 
-	// Get and sanitize the event creation form data.
-	$title = strip_tags($_POST['title']);
-	$date = strip_tags($_POST['date']);
-	$start_time = strip_tags($_POST['start_time']);
-	$end_time = strip_tags($_POST['end_time']);
-	$location = strip_tags($_POST['location']);
-	$description = strip_tags($_POST['description']);
-
-	// Create the array of event data.
-	$event_data = array(
-		'title' => $title,
-		'date' => $date,
-		'start_time' => $start_time,
-		'end_time' => $end_time,
-		'location' => $location,
-		'description' => $description
-	);
+	// Get and sanitize the event creation form data and store as array.
+	$event_data = array();
+	$event_fields = sem_field_names();
+	foreach ($event_fields as $field) {
+		$user_data = strip_tags($_POST[$field]);
+		$event_data[$field] = $user_data;
+	}
 
 	// Return the array of event data.
 	return $event_data;
+}
+
+function sem_parse_google_map_address_for_api($address) {
+	// Converts a map address to a string form with +'s instead of spaces,
+	//	and no spaces before or after commas.
+
+	// Remove spaces at the beginning and end of the entire string.
+	$api_friendly_address = trim($address);
+
+	// Remove spaces that come after commas.
+	$api_friendly_address = str_replace(', ', ',', $api_friendly_address);
+
+	// Replace remaining spaces with plus signs.
+	$api_friendly_address = str_replace(' ', '+', $api_friendly_address);
+
+	// Return the modified string.
+	return $api_friendly_address;
 }
 
 function sem_plugin_branding_text() {
